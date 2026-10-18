@@ -1192,43 +1192,94 @@ document.addEventListener('change', e => {
 let rt;
 addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => state.model && render(), 150); });
 
-/* Made-up export for trying the app — deterministic, ~21 months, plausible patterns. Never stored. */
-function sampleExport() {
+/* sample:start — made-up export with the same record shapes as a real Clue export.
+   Deterministic: the same seed gives the same cycles, ending at `endDay`. The app passes
+   today (so the last cycle is current); scripts/make-sample-export.mjs writes it to
+   sample-data/ with a fixed date for reproducible screenshots. Never stored. */
+function sampleExport(endDay) {
   let seed = 20261018;
   const rnd = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  const iso = n => fromDay(n).toISOString().slice(0, 10);
-  const out = [];
-  const add = (day, type, value) => { if (day <= todayDay) out.push({ type, id: `sample-${out.length}`, date: iso(day), value }); };
-  const opt = option => [{ option }];
-  const sev = () => ({ severity: rnd() < .25 ? 'severe' : rnd() < .55 ? 'moderate' : 'mild' });
-  const notes = ['Started iron supplement', 'Travel — slept badly', 'Very stressful week at work', 'New running shoes, long run', 'Skipped coffee all week'];
-  for (let start = todayDay - 640, n = 0; start <= todayDay; n++) {
+  const hex = n => Array.from({ length: n }, () => Math.floor(rnd() * 16).toString(16)).join('');
+  const records = new Map();   // one record per type per day, options merged — like the real export
+  const add = (day, type, value) => {
+    const id = `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(12)}`;
+    if (day > endDay) return;
+    const rec = records.get(type + day);
+    if (!rec) records.set(type + day, { type, id, day, value });
+    else if (Array.isArray(rec.value)) for (const v of value) if (!rec.value.some(x => x.option === v.option)) rec.value.push(v);
+  };
+  const o = (...opts) => opts.map(option => ({ option }));
+  const sev = () => ({ severity: rnd() < .2 ? 'severe' : rnd() < .55 ? 'moderate' : 'mild' });
+  const notes = ['Started iron supplement', 'Travel, slept badly', 'Stressful week at work', 'Long weekend, felt great', 'Cut back on coffee'];
+
+  for (let start = endDay - 900, n = 0; start <= endDay; n++) {
     const len = Math.round(29 + (rnd() + rnd() + rnd() - 1.5) * 3);
-    const day = cd => start + cd - 1, before = k => start + len - k;
-    const plen = rnd() < .4 ? 5 : 4;
-    ['medium', 'heavy', 'medium', 'light', 'light'].slice(0, plen).forEach((f, i) => add(day(i + 1), 'period', { option: f }));
-    if (rnd() < .3) add(before(1), 'spotting', opt('brown'));
-    for (const cd of [1, 2]) if (rnd() < (cd === 1 ? .85 : .6)) add(day(cd), 'pain', [{ option: 'period_cramps', extent: sev() }, ...(rnd() < .35 ? [{ option: 'lower_back' }] : [])]);
-    if (rnd() < .5) add(day(1), 'medication', opt('painkillers'));
-    if (rnd() < .3) add(day(rnd() < .5 ? 1 : 2), 'energy', opt('exhausted'));
-    if (rnd() < .5) add(before(15 + Math.floor(rnd() * 3)), 'discharge', opt('egg_white'));
-    if (rnd() < .25) add(before(14), 'pain', opt('ovulation'));
-    if (rnd() < .2) add(day(8 + Math.floor(rnd() * 5)), 'energy', opt('energetic'));
-    for (let k = 1; k <= 8; k++) {
-      if (rnd() < .3 && k >= 2) add(before(k), 'pain', [{ option: 'breast_tenderness' }]);
-      if (rnd() < (k <= 4 ? .25 : .05)) add(before(k), 'feelings', [{ option: rnd() < .5 ? 'sad' : 'irritable' }, ...(rnd() < .4 ? [{ option: 'sensitive' }] : [])]);
-      if (rnd() < (k <= 6 ? .14 : .03)) add(before(k), 'craving', opt('sweet'));
-      if (rnd() < (k <= 4 ? .18 : .04)) add(before(k), 'digestion', opt('bloated'));
-      if (rnd() < (k <= 5 ? .12 : .03)) add(before(k), 'skin', opt('acne'));
+    const day = cd => start + cd - 1, before = k => start + len - k, any = () => day(1 + Math.floor(rnd() * len));
+    const ov = len - 13;
+
+    // cycle 9's period goes unlogged, so the app shows one ~58-day "likely untracked" cycle
+    if (n !== 9) {
+      const plen = 3 + (rnd() < .5) + (rnd() < .2);
+      const flows = [rnd() < .4 ? 'heavy' : 'medium', rnd() < .06 ? 'very_heavy' : 'heavy', 'medium', 'light', 'light'];
+      for (let i = 0; i < plen; i++) add(day(i + 1), 'period', { option: flows[i] });
+      if (rnd() < .2) add(day(plen + 1), 'spotting', o('red'));
+      if (rnd() < .85) add(day(1), 'pain', [{ option: 'period_cramps', extent: sev() }, ...(rnd() < .35 ? o('lower_back') : [])]);
+      if (rnd() < .6) add(day(2), 'pain', [{ option: 'period_cramps', extent: sev() }]);
+      if (rnd() < .25) add(day(3), 'pain', [{ option: 'period_cramps', extent: { severity: 'mild' } }]);
+      if (rnd() < .5) add(day(1), 'medication', o('painkillers'));
+      if (rnd() < .25) add(day(2), 'medication', o('painkillers'));
+      if (rnd() < .3) add(day(1 + (rnd() < .5)), 'energy', o('exhausted'));
+      if (rnd() < .2) add(day(1), 'pain', o('headache'));
     }
-    if (rnd() < .3) add(day(1 + Math.floor(rnd() * len)), 'pain', opt('headache'));
-    if (rnd() < .5) add(day(1 + Math.floor(rnd() * len)), 'tags', opt('Long run'));
-    if (rnd() < .2) add(day(1 + Math.floor(rnd() * len)), 'sleep_duration', { minutes: 360 + Math.floor(rnd() * 150) });
-    if (n % 4 === 2) add(day(3 + Math.floor(rnd() * 20)), 'notes', { text: notes[n / 4 % notes.length | 0] });
+    if (rnd() < .3) add(before(1), 'spotting', o('brown'));
+
+    // around ovulation
+    if (rnd() < .5) add(day(ov - 1 + Math.floor(rnd() * 3)), 'discharge', o('egg_white'));
+    if (rnd() < .2) add(day(ov), 'pain', o('ovulation'));
+    if (rnd() < .15) add(day(ov - Math.floor(rnd() * 3)), 'sex_life', o('high_sex_drive'));
+    if (rnd() < .2) add(day(7 + Math.floor(rnd() * 6)), 'energy', o('energetic'));
+    if (rnd() < .12) add(day(8 + Math.floor(rnd() * 6)), 'feelings', o('happy'));
+    if (rnd() < .1) add(day(9 + Math.floor(rnd() * 5)), 'social_life', o('sociable'));
+
+    // the days before the next period
+    for (let k = 1; k <= 8; k++) {
+      if (k >= 2 && rnd() < .3) add(before(k), 'pain', o('breast_tenderness'));
+      if (rnd() < .15) add(before(k), 'breasts_and_chest', o(rnd() < .7 ? 'dense_or_heavy' : 'swollen_breasts'));
+      if (rnd() < (k <= 4 ? .25 : .05)) add(before(k), 'feelings', o(rnd() < .5 ? 'sad' : 'irritable', ...(rnd() < .4 ? ['sensitive'] : []), ...(rnd() < .15 ? ['anxious'] : [])));
+      if (rnd() < (k <= 5 ? .1 : .03)) add(before(k), 'mind', o(rnd() < .6 ? 'stressed' : 'unproductive'));
+      if (k <= 3 && rnd() < .08) add(before(k), 'social_life', o('withdrawn'));
+      if (rnd() < (k <= 6 ? .14 : .03)) add(before(k), 'craving', o(rnd() < .8 ? 'sweet' : 'salty'));
+      if (rnd() < (k <= 4 ? .18 : .04)) add(before(k), 'digestion', o('bloated', ...(rnd() < .3 ? ['gassy'] : [])));
+      if (rnd() < (k <= 5 ? .12 : .03)) add(before(k), 'skin', o('acne'));
+      if (k <= 3 && rnd() < .08) add(before(k), 'pms', { option: 'yes' });
+      if (k <= 3 && rnd() < .06) add(before(k), 'sleep_quality', o('trouble_falling_asleep'));
+    }
+
+    // scattered through the cycle
+    if (rnd() < .2) add(any(), 'pain', o('headache'));
+    if (rnd() < .05) add(any(), 'pain', [{ option: 'migraine', extent: sev() }]);
+    if (rnd() < .1) add(any(), 'energy', o('tired'));
+    if (rnd() < .1) add(any(), 'discharge', o('creamy'));
+    if (rnd() < .15) add(any(), 'sex_life', o('protected'));
+    if (rnd() < .2) add(any(), 'sleep_duration', { minutes: 360 + Math.floor(rnd() * 150) });
+    if (rnd() < .5) add(any(), 'tags', o('Long run'));
+    if (rnd() < .3) add(any(), 'tags', o('Yoga'));
+    if (n % 4 === 2) add(day(3 + Math.floor(rnd() * 20)), 'notes', { text: notes[(n >> 2) % notes.length] });
+    if (n === 2) add(day(10), 'weight', { kilograms: 63.5 });
+    if (n === 5) add(day(12), 'appointments', o('general_check_up'));
+    if (n === 18) add(day(9), 'appointments', o('ob_gyn'));
+    if (n === 14) for (let i = 0; i < 4; i++) {
+      add(day(16 + i), 'ailments', o('cold_flu', ...(i === 0 ? ['fever'] : [])));
+      add(day(16 + i), 'medication', o('cold_or_flu_meds'));
+    }
     start += len;
   }
-  return out;
+  return [...records.values()]
+    .sort((a, b) => a.type.localeCompare(b.type) || a.day - b.day)
+    .map(r => ({ type: r.type, id: r.id, date: fromDay(r.day).toISOString().slice(0, 10), value: r.value }));
 }
+/* sample:end */
+const SAMPLE_PROFILE = { cycle_length: 29, period_length: 4, predictions_enabled: true };
 
 function start(measurements, profile, sample = false) {
   document.getElementById('sampleTag').hidden = !sample;
@@ -1283,7 +1334,7 @@ document.getElementById('pickFolder').onclick = () => document.getElementById('f
 document.getElementById('pickFile').onclick = () => document.getElementById('fileInput').click();
 document.getElementById('folderInput').onchange = e => accept([...e.target.files]);
 document.getElementById('fileInput').onchange = e => accept([...e.target.files]);
-document.getElementById('trySample').onclick = () => start(sampleExport(), { cycle_length: 29 }, true);
+document.getElementById('trySample').onclick = () => start(sampleExport(todayDay), SAMPLE_PROFILE, true);
 document.getElementById('unload').onclick = () => {
   try { localStorage.removeItem(STORE_KEY); } catch (_) {}
   location.reload();
