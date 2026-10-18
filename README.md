@@ -18,8 +18,8 @@ No export to hand? Click **Try with sample data**, or drop the made-up export in
 
 ## Using it
 
-1. Request your data export from Clue. It arrives as a zip; unzip it.
-2. Open the app and drop the `ClueDataDownload-…` folder (or just its `measurements.json`) onto the page.
+1. **Get your export from Clue.** In the Clue app, go to the More menu → **Settings** → **Download my data** and request it. Copy the password the app shows you. Clue emails a download link (valid for 72 hours); download the .zip and open it with that password. Menus change over time; [Clue's help article](https://support.helloclue.com/hc/en-us/articles/17320910724125-How-do-I-get-a-copy-of-my-Clue-data) has the current steps.
+2. **Open the app** and drop the unzipped `ClueDataDownload-…` folder (or just its `measurements.json`) onto the page.
 
 <img src="docs/start.png" alt="Start screen" width="560">
 
