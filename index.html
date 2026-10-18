@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cycle Analysis</title>
+<style>
+:root {
+  color-scheme: dark;
+  --page: #1b1a18;
+  --surface: #1f1e1c;
+  --raised: #2a2926;
+  --ink: #f2f0eb;
+  --ink-2: #c3c1ba;
+  --muted: #8d8b85;
+  --hair: #33322f;
+  --grid-dot: #5d5c58;
+  --week-dot: #b9b7b1;
+  --bar: #4a4946;
+  --baseline: #45443f;
+  --len-bar: #77756f;
+  --len-current: #5a5955;
+  --len-hatch-bg: #4a4946;
+  --len-hatch-fg: #77756f;
+
+  --flow-light: #ff6b6e;
+  --flow-medium: #e33a40;
+  --flow-heavy: #b8141f;
+  --flow-very_heavy: #860a12;
+  --fertile: #0a7e98;
+  --fertile-ink: #2ba6c2;
+  --ovulation: #7fd6f2;
+  --accent: #7fd6f2;
+
+  /* category dots — validated (dark, #1f1e1c): CVD ΔE ≥ 9.3, normal ΔE ≥ 18.4 */
+  --c-bleed: #dc2f4a;
+  --c-mood: #c98410;
+  --c-body: #4f72d6;
+  --c-sex: #22a888;
+  --c-med: #a3427c;
+  --c-tags: #8a80e6;
+  --c-notes: #d8d6d0;
+
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--page); color: var(--ink); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+body { min-height: 100vh; }
+button { font: inherit; color: inherit; }
+
+/* ---------- loader ---------- */
+#loader { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+.drop {
+  width: min(560px, 100%); padding: 56px 40px; border-radius: 28px; text-align: center;
+  background: var(--surface); border: 2px dashed #3d3c39; transition: border-color .15s, background .15s;
+}
+.drop.over { border-color: var(--accent); background: #232a2c; }
+.drop h1 { font-size: 28px; font-weight: 600; margin: 0 0 10px; letter-spacing: -.01em; }
+.drop p { color: var(--ink-2); margin: 0 0 28px; line-height: 1.5; }
+.drop .small { font-size: 13px; color: var(--muted); margin: 24px 0 0; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px;
+  background: #0b4e5e; color: var(--accent); border: 0; cursor: pointer; font-weight: 500; font-size: 15px;
+}
+.btn:hover { background: #0e5c6f; }
+.btn.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--hair); }
+.btn.ghost:hover { background: var(--raised); }
+.err { color: #ff8a8d; margin-top: 16px; font-size: 14px; }
+
+/* ---------- app shell ---------- */
+#app { display: none; }
+header.top {
+  position: sticky; top: 0; z-index: 10; background: rgba(27,26,24,.92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--hair);
+}
+.top-inner { max-width: 1320px; margin: 0 auto; padding: 14px 32px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.top h1 { font-size: 20px; font-weight: 500; margin: 0; }
+.tabs { display: flex; background: var(--surface); border-radius: 999px; padding: 4px; }
+.tabs button { border: 0; background: transparent; padding: 7px 18px; border-radius: 999px; cursor: pointer; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+.tabs button[aria-selected="true"] { background: #0b4e5e; color: var(--accent); }
+.spacer { flex: 1; }
+select {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--hair);
+  border-radius: 999px; height: 34px; padding: 0 30px 0 14px; appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 15px, calc(100% - 11px) 15px; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.filters { max-width: 1320px; margin: 0 auto; padding: 0 32px 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 13px 0 10px; border-radius: 999px;
+  border: 1px solid var(--hair); background: var(--surface); cursor: pointer; font-size: 13px; color: var(--ink);
+}
+.chip i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+.chip[aria-pressed="false"] { color: var(--muted); background: transparent; }
+.chip[aria-pressed="false"] i { opacity: .25; }
+.filters .label { font-size: 13px; color: var(--muted); margin-right: 4px; }
+
+main { max-width: 1320px; margin: 0 auto; padding: 8px 32px 120px; }
+
+/* ---------- overview ---------- */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 24px 0 16px; }
+.stat { background: var(--surface); border-radius: 18px; padding: 16px 20px; }
+.stat .k { font-size: 13px; color: var(--muted); }
+.stat .v { font-size: 30px; font-weight: 600; margin-top: 4px; letter-spacing: -.01em; }
+.stat .v small { font-size: 15px; font-weight: 400; color: var(--ink-2); margin-left: 4px; }
+.panel { background: var(--surface); border-radius: 22px; padding: 18px 20px 12px; margin-bottom: 8px; }
+.panel-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+.panel-head h2 { font-size: 16px; font-weight: 600; margin: 0; }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); align-items: center; flex-wrap: wrap; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+.legend i.round { border-radius: 50%; }
+#lengthChart { width: 100%; height: auto; display: block; margin-top: 8px; }
+
+/* ---------- cycles ---------- */
+.year { font-size: 34px; font-weight: 600; margin: 48px 0 8px; letter-spacing: -.01em; }
+.cycle { margin: 26px 0 36px; scroll-margin-top: 140px; }
+.cycle.flash .cycle-head { color: var(--accent); }
+.cycle-head { display: flex; align-items: center; gap: 12px; font-size: 22px; margin-bottom: 14px; transition: color .4s; }
+.cycle-head b { font-weight: 600; }
+.cycle-head .meta { margin-left: auto; font-size: 13px; color: var(--muted); }
+.pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--raised); color: var(--ink-2); }
+.pill.warn { background: #3a2e1a; color: #e7b866; }
+.cycle-body { display: flex; align-items: flex-start; }
+.grid-scroll { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.grid-scroll svg { display: block; }
+.labels { flex: 0 0 auto; width: var(--label-w, 240px); }
+.labels div { white-space: nowrap; overflow: hidden; font-size: 15px; color: var(--ink-2); display: flex; align-items: center; padding: 0 12px 0 10px; border-radius: 0 10px 10px 0; transition: background .08s, color .08s; }
+.labels div b { color: var(--ink); }
+.labels b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.labels span { font-weight: 400; margin-left: .3em; }
+.rowbg { fill: transparent; transition: fill .08s; }
+/* one outlined strip: svg band (stroke overruns right edge, clipped) + label (no left border) */
+.rowbg { stroke: transparent; stroke-width: 1; }
+[data-row].hl .rowbg { fill: rgba(127,214,242,.13); stroke: rgba(127,214,242,.55); }
+.labels div { border: 1px solid transparent; border-left: 0; }
+.labels div.hl { background: rgba(127,214,242,.13); border-color: rgba(127,214,242,.55); color: var(--ink); }
+.labels div.hl b { color: var(--accent); }
+.labels .sub { color: var(--muted); font-size: 12px; margin-left: 8px; font-variant-numeric: tabular-nums; }
+
+/* ---------- patterns ---------- */
+.pattern-controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin: 28px 0 6px; }
+.pattern-note { color: var(--ink-2); font-size: 14px; line-height: 1.5; margin: 8px 0 20px; max-width: 780px; }
+.seg { display: inline-flex; background: var(--surface); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; cursor: pointer; color: var(--ink-2); font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--ink); }
+.cat-title { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 26px 0 6px; display: flex; align-items: center; gap: 8px; }
+.cat-title i { width: 8px; height: 8px; border-radius: 50%; }
+
+/* ---------- tooltip ---------- */
+#tip {
+  position: fixed; z-index: 50; pointer-events: none; background: #2f2e2b; color: var(--ink); border-radius: 12px;
+  padding: 9px 12px; font-size: 13px; line-height: 1.45; box-shadow: 0 8px 28px rgba(0,0,0,.45); max-width: 320px;
+  opacity: 0; transition: opacity .08s; white-space: pre-line;
+}
+#tip b { font-weight: 600; }
+#tip .t-dim { color: var(--ink-2); }
+[data-tip] { cursor: default; }
+
+.empty { color: var(--muted); padding: 40px 0; }
+
+/* ---------- report (light, paper-width) ---------- */
+.report {
+  color-scheme: light;
+  --page: #e9e7e2; --surface: #ffffff; --raised: #f3f2ee;
+  --ink: #1b1a18; --ink-2: #4f4d48; --muted: #8a8882; --hair: #e3e1db;
+  --grid-dot: #cfcdc6; --week-dot: #8f8d87; --bar: #e7e5df; --baseline: #b9b7b0;
+  --len-bar: #b3b1aa; --len-current: #d6d4ce; --len-hatch-bg: #ecebe6; --len-hatch-fg: #bdbbb4;
+  --flow-light: #ff8c8f; --flow-medium: #e0323a; --flow-heavy: #b3121c; --flow-very_heavy: #7d0a12;
+  --fertile: #1393ad; --fertile-ink: #0a7690; --ovulation: #ffffff; --accent: #0a7690;
+  /* category dots — validated (light, #ffffff): CVD ΔE ≥ 9.5, normal ΔE ≥ 17.8, all ≥ 3:1 */
+  --c-bleed: #d0263f; --c-mood: #c27c05; --c-body: #3a5fc4; --c-sex: #109a7c; --c-med: #93356f; --c-tags: #6f62d9; --c-notes: #6b6a65;
+  color: var(--ink);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.report-toolbar {
+  max-width: 816px; margin: 24px auto 16px; display: flex; gap: 10px 18px; align-items: center; flex-wrap: wrap;
+  color: var(--ink-2); font-size: 13px;
+}
+.report-toolbar label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.report-toolbar input { accent-color: #2ba6c2; }
+.report-toolbar .hint { flex-basis: 100%; color: var(--muted); font-size: 12px; }
+.sheet {
+  width: 816px; max-width: 100%; margin: 0 auto 40px; background: var(--surface); color: var(--ink);
+  padding: 46px 48px; border-radius: 6px; box-shadow: 0 10px 40px rgba(0,0,0,.45); font-size: 10.5px; line-height: 1.45;
+}
+.sheet svg { max-width: 100%; height: auto; display: block; }
+.r-section + .r-section { margin-top: 36px; padding-top: 28px; border-top: 1px dashed var(--hair); }
+.r-title { font-size: 26px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+.r-sub { color: var(--ink-2); font-size: 12px; margin: 4px 0 18px; }
+.r-h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+.r-h3 { font-size: 13px; font-weight: 600; margin: 18px 0 6px; }
+.r-lede { color: var(--ink-2); margin: 0 0 12px; max-width: 620px; }
+.r-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+.r-stat { background: var(--raised); border-radius: 10px; padding: 9px 12px; }
+.r-stat .k { color: var(--muted); font-size: 10px; }
+.r-stat .v { font-size: 20px; font-weight: 600; }
+.r-stat .v small { font-size: 11px; font-weight: 400; color: var(--ink-2); margin-left: 3px; }
+.sheet .legend { font-size: 10px; gap: 12px; margin: 4px 0 6px; }
+.r-table { width: 100%; border-collapse: collapse; font-size: 10px; font-variant-numeric: tabular-nums; }
+.r-table th { text-align: left; font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--ink-2); padding: 4px 6px; }
+.r-table td { border-bottom: 1px solid var(--hair); padding: 3px 6px; vertical-align: top; }
+.r-table tr { break-inside: avoid; }
+.r-table .num { text-align: right; }
+.r-table .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.r-table tr.group td { font-weight: 600; color: var(--ink-2); padding-top: 10px; border-bottom: 1px solid var(--ink-2); }
+.r-year { font-size: 18px; font-weight: 600; margin: 22px 0 4px; break-after: avoid; }
+.r-cycle { break-inside: avoid; margin: 10px 0 16px; }
+.r-cycle-head { font-size: 11.5px; margin-bottom: 4px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.r-cycle-head b { font-weight: 600; }
+.r-cycle-head .m { color: var(--muted); font-size: 10px; }
+.r-cycle-head .flag { font-size: 9.5px; color: #8a5a00; background: #fbefd5; border-radius: 99px; padding: 1px 7px; }
+.r-details { margin: 4px 0 0 0; padding: 0; list-style: none; color: var(--ink-2); font-size: 9.5px; columns: 2; column-gap: 24px; }
+.r-details li { break-inside: avoid; }
+.r-details b { color: var(--ink); font-weight: 600; }
+.r-break { break-before: page; }
+.r-method li { margin-bottom: 4px; }
+@page { size: letter; margin: 12mm 12mm 14mm; }
+@media print {
+  :root { color-scheme: light; }   /* otherwise Chrome paints the page margins with the dark canvas */
+  html, body { background: #fff !important; }
+  header.top, .report-toolbar, #tip, #viewCycles, #viewPatterns { display: none !important; }
+  main { padding: 0 !important; max-width: none !important; }
+  .report { background: #fff; }
+  .sheet { width: auto; margin: 0; padding: 0; box-shadow: none; border-radius: 0; }
+  .r-section + .r-section { border-top: 0; padding-top: 0; margin-top: 0; }
+}
+
+@media (max-width: 760px) {
+  .top-inner, .filters, main { padding-left: 16px; padding-right: 16px; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .labels { --label-w: 150px; }
+  .labels div { font-size: 13px; }
+  .labels .sub { display: none; }
+  .cycle-head { font-size: 18px; }
+}
+</style>
+</head>
+<body>
+
+<section id="loader">
+  <div class="drop" id="drop">
+    <h1>Cycle Analysis</h1>
+    <p>Drop your <b>ClueDataDownload</b> folder (or its <code>measurements.json</code>) here.<br>Everything stays in this browser — nothing is uploaded.</p>
+    <button class="btn" id="pickFolder">Choose folder</button>
+    <button class="btn ghost" id="pickFile">Choose file</button>
+    <input type="file" id="folderInput" webkitdirectory hidden>
+    <input type="file" id="fileInput" accept=".json,application/json" multiple hidden>
+    <div class="err" id="loadErr"></div>
+    <p class="small">The last export you load is remembered locally so a reload doesn’t ask again.</p>
+  </div>
+</section>
+
+<div id="app">
+  <header class="top">
+    <div class="top-inner">
+      <h1>Analysis</h1>
+      <div class="tabs" role="tablist">
+        <button role="tab" data-view="cycles" aria-selected="true">Cycles</button>
+        <button role="tab" data-view="patterns" aria-selected="false">Patterns</button>
+        <button role="tab" data-view="report" aria-selected="false">Report</button>
+      </div>
+      <div class="spacer"></div>
+      <select id="yearSel" aria-label="Years"></select>
+      <button class="btn ghost" id="unload" title="Forget this export and load another">Load another</button>
+    </div>
+    <div class="filters" id="chips"><span class="label">Show</span></div>
+  </header>
+  <main>
+    <div id="viewCycles"></div>
+    <div id="viewPatterns" hidden></div>
+    <div id="viewReport" hidden></div>
+  </main>
+</div>
+
+<div id="tip"></div>
+
+<script>
+'use strict';
+
+/* =====================================================================
+   Vocabulary: measurement type -> category, label parts, option order
+   label = [bold part, regular part]  (Clue style: "**Lower back** Pain")
+   ===================================================================== */
+const CATS = [
+  { id: 'bleed', name: 'Bleeding',      color: 'var(--c-bleed)' },
+  { id: 'mood',  name: 'Mood & energy', color: 'var(--c-mood)'  },
+  { id: 'body',  name: 'Body & pain',   color: 'var(--c-body)'  },
+  { id: 'sex',   name: 'Sex',           color: 'var(--c-sex)'   },
+  { id: 'med',   name: 'Medical',       color: 'var(--c-med)'   },
+  { id: 'tags',  name: 'Tags',          color: 'var(--c-tags)'  },
+  { id: 'notes', name: 'Notes',         color: 'var(--c-notes)' },
+];
+const CAT = Object.fromEntries(CATS.map(c => [c.id, c]));
+
+const TYPES = [
+  ['spotting',          'bleed', 'Spotting', { red: 'Red', brown: 'Brown' }],
+  ['collection_method', 'bleed', '', { tampon: 'Tampon', panty_liner: 'Panty liner', pad: 'Pad', menstrual_cup: 'Menstrual cup', period_underwear: 'Period underwear' }],
+  ['feelings',          'mood',  '', { not_in_control: 'Not in control', mood_swings: 'Mood swings' }],
+  ['pms',               'mood',  '', { yes: 'PMS' }],
+  ['sleep_quality',     'mood',  '', { trouble_falling_asleep: 'Trouble falling asleep', woke_up_tired: 'Woke up tired', night_sweats: 'Night sweats', restful: 'Restful sleep' }],
+  ['sleep_duration',    'mood',  '', {}],
+  ['energy',            'mood',  '', { low_energy: 'Low energy' }],
+  ['mind',              'mood',  '', { brain_fog: 'Brain fog' }],
+  ['social_life',       'mood',  '', {}],
+  ['craving',           'mood',  'Cravings', { carbs: 'Carb' }],
+  ['pain',              'body',  'Pain', {
+      period_cramps: ['Cramps', ''], headache: ['Headache', ''], migraine: ['Migraine', ''],
+      migraine_with_aura: ['Migraine with aura', ''], breast_tenderness: ['Breast tenderness', ''],
+      lower_back: 'Lower back' }],
+  ['digestion',         'body',  '', { ok: 'Good digestion' }],
+  ['stool',             'body',  '', {}],
+  ['breasts_and_chest', 'body',  'Breasts', { dense_or_heavy: 'Dense or heavy', swollen_breasts: ['Swollen breasts', ''] }],
+  ['discharge',         'body',  'Discharge', { egg_white: 'Eggwhite' }],
+  ['vulva_and_vagina',  'body',  'Vulva & vagina', {}],
+  ['skin',              'body',  'Skin', { acne: ['Acne', ''] }],
+  ['hot_flashes',       'body',  '', {}],
+  ['urine',             'body',  '', { frequent_urination: 'Frequent urination' }],
+  ['ailments',          'body',  '', { cold_flu: 'Cold / flu' }],
+  ['pregnancy_superpowers', 'body', '', { super_smell: 'Super smell' }],
+  ['weight',            'body',  '', {}],
+  ['sex_life',          'sex',   '', { unprotected: ['Unprotected', 'Sex'], protected: ['Protected', 'Sex'], withdrawal: ['Withdrawal', ''], high_sex_drive: 'High sex drive', painful_intercourse: 'Painful intercourse', no_orgasm: 'No orgasm', sex_toys: 'Sex toys' }],
+  ['medication',        'med',   '', { estrogen_therapy: 'Estrogen therapy', hormone_therapy: 'Hormone therapy', progesterone_therapy: 'Progesterone therapy', cold_or_flu_meds: 'Cold or flu meds' }],
+  ['appointments',      'med',   '', { ob_gyn: 'OB/GYN', general_check_up: 'General check-up' }],
+  ['tags',              'tags',  '', {}],
+];
+const TYPE = Object.fromEntries(TYPES.map(([t, cat, suffix, opts], i) => [t, { t, cat, suffix, opts, order: i }]));
+const SEVERITY_R = { mild: 0.62, moderate: 0.8, severe: 1, very_severe: 1, low: 0.62, medium: 0.8, high: 1 };
+const FLOWS = ['light', 'medium', 'heavy', 'very_heavy'];
+
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const human = s => cap(String(s).replace(/_/g, ' '));
+
+function labelFor(type, option) {
+  const T = TYPE[type];
+  if (!T) return [human(type) + (option ? ' · ' + human(option) : ''), ''];
+  if (type === 'sleep_duration') return ['Sleep', ''];
+  if (type === 'weight') return ['Weight', ''];
+  if (type === 'hot_flashes') return ['Hot flashes', ''];
+  if (type === 'tags') return [option, ''];
+  const o = T.opts[option];
+  if (Array.isArray(o)) return o;
+  return [o || human(option), T.suffix];
+}
+
+/* =====================================================================
+   Dates — whole days as integers (UTC) to dodge DST
+   ===================================================================== */
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const toDay = iso => { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d) / 864e5; };
+const fromDay = n => new Date(n * 864e5);
+const fmt = n => { const d = fromDay(n); return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}`; };
+const fmtY = n => `${fmt(n)}, ${fromDay(n).getUTCFullYear()}`;
+const yearOf = n => fromDay(n).getUTCFullYear();
+const todayDay = (() => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5; })();
+
+/* =====================================================================
+   Model
+   ===================================================================== */
+const MIN_CYCLE = 15;   // period restarting sooner than this is folded into the current cycle
+const GAP_CYCLE = 50;   // longer than this = probably untracked period(s)
+
+function buildModel(measurements, profile) {
+  const flow = new Map();            // day -> flow
+  const notes = new Map();           // day -> text
+  const events = [];                 // {day, key, cat, label, sev, detail}
+  const rowsMeta = new Map();        // key -> {key, cat, label, typeOrder}
+
+  const addEvent = (day, type, option, extra = {}) => {
+    const T = TYPE[type];
+    const cat = type === 'notes' ? 'notes' : T ? T.cat : 'body';
+    const key = type === 'notes' ? 'notes' : `${type}:${option ?? ''}`;
+    const label = type === 'notes' ? ['Notes', ''] : labelFor(type, option);
+    if (!rowsMeta.has(key)) rowsMeta.set(key, { key, cat, label, typeOrder: T ? T.order : 999 });
+    events.push({ day, key, cat, label, ...extra });
+  };
+
+  for (const m of measurements) {
+    if (!m || !m.date || !m.type) continue;
+    const day = toDay(m.date), v = m.value;
+    switch (m.type) {
+      case 'period':
+        if (v && v.option) flow.set(day, v.option);
+        break;
+      case 'notes':
+        if (v && v.text) { notes.set(day, v.text.trim()); addEvent(day, 'notes', null, { detail: v.text.trim() }); }
+        break;
+      case 'sleep_duration': {
+        const min = v && v.minutes;
+        addEvent(day, m.type, null, { detail: min != null ? `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m` : '' });
+        break;
+      }
+      case 'weight':
+        addEvent(day, m.type, null, { detail: v && v.kilograms != null ? `${v.kilograms} kg` : '' });
+        break;
+      case 'hot_flashes':
+        addEvent(day, m.type, null, { sev: v && v.option, detail: v && v.option ? human(v.option) : '' });
+        break;
+      default: {
+        const list = Array.isArray(v) ? v : v ? [v] : [];
+        for (const o of list) {
+          if (!o || o.option == null) continue;
+          const sev = o.extent && o.extent.severity;
+          addEvent(day, m.type, o.option, { sev, detail: sev ? human(sev) : '' });
+        }
+      }
+    }
+  }
+
+  /* --- cycles from period days --- */
+  const pdays = [...flow.keys()].sort((a, b) => a - b);
+  const starts = [];
+  let prev = -Infinity;
+  for (const d of pdays) {
+    const cur = starts[starts.length - 1];
+    if (d - prev > 2 && (cur == null || d - cur >= MIN_CYCLE)) starts.push(d);
+    prev = d;
+  }
+
+  const cycles = starts.map((start, i) => {
+    const next = starts[i + 1];
+    const c = { id: 'c' + start, start, current: next == null };
+    c.length = next != null ? next - start : null;
+    c.end = next != null ? next - 1 : null;
+    // period length: period days in the opening run (tolerating 1-day gaps)
+    let pl = 0, last = start - 1;
+    for (let d = start; d < start + 12; d++) if (flow.has(d)) { if (d - last > 2) break; pl = d - start + 1; last = d; }
+    c.periodLength = pl;
+    c.gap = c.length != null && c.length > GAP_CYCLE;
+    return c;
+  });
+
+  const normal = cycles.filter(c => !c.current && !c.gap);
+  const recent = normal.slice(-6);
+  const predicted = recent.length ? Math.round(recent.reduce((s, c) => s + c.length, 0) / recent.length) : (profile?.cycle_length || 28);
+
+  // attach events to cycles
+  const byStart = cycles.map(c => c.start);
+  const cycleIndexOf = day => {
+    let lo = 0, hi = byStart.length - 1, ans = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (byStart[mid] <= day) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+    return ans;
+  };
+  for (const c of cycles) c.events = [];
+  for (const e of events) {
+    const i = cycleIndexOf(e.day);
+    if (i < 0) continue;
+    const c = cycles[i];
+    e.cd = e.day - c.start + 1;
+    c.events.push(e);
+  }
+
+  for (const c of cycles) {
+    const lastData = c.events.reduce((m, e) => Math.max(m, e.cd), 0);
+    if (c.current) {
+      c.todayCd = todayDay - c.start + 1;
+      c.predicted = true;
+      c.length = Math.max(predicted, Math.min(c.todayCd, predicted + 30), lastData, c.periodLength);
+      c.displayLength = c.length;
+    } else {
+      c.displayLength = c.length;
+    }
+    // Clue's rule, read off the app: ovulation = length − 13, fertile window = ovulation −5 … +1
+    if (!c.gap && c.length >= 20) {
+      c.ovulation = c.length - 13;
+      c.fertile = [Math.max(c.periodLength + 1, c.ovulation - 5), c.ovulation + 1];
+    }
+  }
+
+  const rowOrder = [...rowsMeta.values()].sort((a, b) =>
+    CATS.findIndex(c => c.id === a.cat) - CATS.findIndex(c => c.id === b.cat) ||
+    a.typeOrder - b.typeOrder ||
+    (a.label[0] + a.label[1]).localeCompare(b.label[0] + b.label[1]));
+
+  return { cycles, flow, notes, rowOrder, predicted, years: [...new Set(cycles.map(c => yearOf(c.start)))].sort((a, b) => b - a) };
+}
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const state = {
+  model: null,
+  view: 'cycles',
+  year: 'all',
+  cats: new Set(CATS.map(c => c.id)),
+  align: 'start',
+  report: { order: 'asc', summary: true, symptoms: true, patterns: true, cycles: true, appendix: true },
+  scale: 'peak',
+  rare: false,
+};
+const STORE_KEY = 'clue-viz:export';
+
+const visibleCycles = () => state.model.cycles.filter(c => state.year === 'all' || yearOf(c.start) === +state.year);
+
+/* =====================================================================
+   SVG helpers
+   ===================================================================== */
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const tipAttr = (title, body) => `data-tip="${esc(title)}" data-tipb="${esc(body || '')}"`;
+
+/* =====================================================================
+   Cycles view
+   ===================================================================== */
+const ROW_H = 31, BAR_H = 26, HEAD_H = 76, PAD_X = 4;
+
+function colWidth() {
+  const main = document.querySelector('main');
+  const avail = main.clientWidth - (innerWidth < 760 ? 32 + 150 : 64 + 240);
+  const typical = typicalLen();
+  return Math.max(18, Math.min(30, Math.floor(avail / typical)));
+}
+function typicalLen() {
+  const lens = state.model.cycles.filter(c => !c.gap).map(c => c.displayLength).sort((a, b) => a - b);
+  return Math.max(30, lens[Math.floor(lens.length * 0.9)] || 30);
+}
+
+function phaseBar(c, W, cx, colW, barH = BAR_H) {
+  const L = c.displayLength, y = 4, r = barH / 2, pip = barH < 20 ? 1.3 : 2.6;
+  const x0 = cx(1) - colW / 2, x1 = cx(L) + colW / 2;
+  let s = `<defs><clipPath id="clip-${c.id}"><rect x="${x0}" y="${y}" width="${x1 - x0}" height="${barH}" rx="${r}"/></clipPath></defs>`;
+  s += `<g clip-path="url(#clip-${c.id})"><rect x="${x0}" y="${y}" width="${x1 - x0}" height="${barH}" fill="var(--bar)"/>`;
+  for (let d = 1; d <= Math.min(L, 14); d++) {
+    const f = state.model.flow.get(c.start + d - 1);
+    if (!f || d > c.periodLength) continue;
+    s += `<rect x="${cx(d) - colW / 2 - .5}" y="${y}" width="${colW + 1}" height="${barH}" fill="var(--flow-${f})" ${tipAttr(`Period · ${human(f)} flow`, `${fmtY(c.start + d - 1)} · day ${d}`)}/>`;
+  }
+  s += `</g>`;
+  if (c.fertile) {
+    const [a, b] = c.fertile;
+    const fx = cx(a) - colW / 2, fw = cx(b) + colW / 2 - fx;
+    s += `<rect x="${fx}" y="${y}" width="${fw}" height="${barH}" rx="${r}" fill="var(--fertile)" ${c.predicted ? 'opacity=".75"' : ''}
+            ${tipAttr(`${c.predicted ? 'Predicted f' : 'Estimated f'}ertile window`, `Day ${a}–${b} · ${fmt(c.start + a - 1)} – ${fmt(c.start + b - 1)}`)}/>`;
+    const ox = cx(c.ovulation);
+    s += `<g ${tipAttr(`${c.predicted ? 'Predicted' : 'Estimated'} ovulation`, `Day ${c.ovulation} · ${fmtY(c.start + c.ovulation - 1)}\nEstimated as cycle length − 13`)}>
+            <circle cx="${ox}" cy="${y + r}" r="${Math.max(3, r - 4)}" fill="var(--ovulation)"/><circle cx="${ox}" cy="${y + r}" r="${pip}" fill="var(--fertile)"/></g>`;
+  }
+  if (c.current && c.todayCd >= 1 && c.todayCd <= L) {
+    s += `<circle cx="${cx(c.todayCd)}" cy="${y + r}" r="${Math.max(3, r - 3)}" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="1.5" ${tipAttr('Today', `Day ${c.todayCd}`)}/>`;
+  }
+  return s;
+}
+
+function cycleCard(c, rows, colW) {
+  const L = c.displayLength;
+  const W = PAD_X * 2 + L * colW;
+  const cx = d => PAD_X + (d - 0.5) * colW;
+  const H = HEAD_H + rows.length * ROW_H;
+  const fertile = d => c.fertile && d >= c.fertile[0] && d <= c.fertile[1];
+  const isPeriod = d => d <= c.periodLength && state.model.flow.has(c.start + d - 1);
+
+  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cycle ${fmtY(c.start)}">`;
+  svg += phaseBar(c, W, cx, colW);
+
+  // day numbers (odd days, like the app; every day when there's room)
+  const every = colW >= 28 ? 1 : 2;
+  for (let d = 1; d <= L; d++) {
+    if ((d - 1) % every) continue;
+    const col = isPeriod(d) ? 'var(--flow-medium)' : fertile(d) ? 'var(--fertile-ink)' : 'var(--ink-2)';
+    svg += `<text x="${cx(d)}" y="58" text-anchor="middle" font-size="14" fill="${col}" font-weight="${isPeriod(d) || fertile(d) ? 500 : 400}">${d}</text>`;
+  }
+
+  // index events: key -> cd -> [events]
+  const idx = new Map();
+  for (const e of c.events) {
+    if (!idx.has(e.key)) idx.set(e.key, new Map());
+    const m = idx.get(e.key);
+    if (!m.has(e.cd)) m.set(e.cd, []);
+    m.get(e.cd).push(e);
+  }
+
+  const maxR = Math.min(8, colW / 2 - 3);
+  rows.forEach((row, ri) => {
+    const y = HEAD_H + ri * ROW_H + ROW_H / 2 - 4;
+    const m = idx.get(row.key) || new Map();
+    svg += `<g data-row="${ri}"><rect class="rowbg" x=".5" y="${y - ROW_H / 2 + 2.5}" width="${W + 20}" height="${ROW_H - 5}" rx="10"/>`;
+    for (let d = 1; d <= L; d++) {
+      const evs = m.get(d);
+      const future = c.current && d > c.todayCd;
+      if (evs) {
+        const e = evs[0];
+        const r = maxR * (SEVERITY_R[e.sev] || 0.8);
+        const date = c.start + d - 1;
+        const note = state.model.notes.get(date);
+        const body = [`${fmtY(date)} · cycle day ${d}`, e.detail && e.key !== 'notes' ? e.detail : '', e.key === 'notes' ? e.detail : (note ? `Note: ${note}` : '')].filter(Boolean).join('\n');
+        svg += `<g ${tipAttr(row.label.join(' ').trim(), body)}><rect x="${cx(d) - colW / 2}" y="${y - ROW_H / 2}" width="${colW}" height="${ROW_H}" fill="transparent"/>
+                <circle cx="${cx(d)}" cy="${y}" r="${r}" fill="${CAT[row.cat].color}"/></g>`;
+      } else {
+        const week = d % 7 === 0;
+        svg += `<circle cx="${cx(d)}" cy="${y}" r="${week ? 2.6 : 1.7}" fill="${week ? 'var(--week-dot)' : 'var(--grid-dot)'}"${future ? ' opacity=".35"' : ''}/>`;
+      }
+    }
+    svg += `</g>`;
+  });
+  svg += `</svg>`;
+
+  const labels = `<div class="labels" style="padding-top:${HEAD_H - 2}px">` + rows.map((r, ri) => {
+    const n = idx.get(r.key)?.size || 0;
+    return `<div data-row="${ri}" style="height:${ROW_H - 4}px;margin-bottom:4px"><b>${esc(r.label[0])}</b>${r.label[1] ? `<span>${esc(r.label[1])}</span>` : ''}${n > 1 ? `<em class="sub">${n}d</em>` : ''}</div>`;
+  }).join('') + `</div>`;
+
+  const title = c.current
+    ? `<b>Current cycle</b> ${fmt(c.start)} <span class="pill">day ${c.todayCd} · predicted ${c.length} days</span>`
+    : `<b>${c.length} days</b> ${fmt(c.start)} – ${fmt(c.end)}${c.gap ? ` <span class="pill warn" title="Over ${GAP_CYCLE} days between logged periods">Likely untracked period</span>` : ''}`;
+  const meta = rows.length ? `${rows.length} symptom${rows.length > 1 ? 's' : ''}` : 'nothing else logged';
+
+  const gridW = Math.min(W, PAD_X * 2 + typicalLen() * colW);
+  return `<section class="cycle" id="${c.id}" style="max-width:${gridW + 240}px">
+    <div class="cycle-head">${title}<span class="meta">${meta}</span></div>
+    <div class="cycle-body"><div class="grid-scroll" style="width:${gridW}px">${svg}</div>${labels}</div>
+  </section>`;
+}
+
+function renderStats(cycles) {
+  const normal = cycles.filter(c => !c.current && !c.gap);
+  const avg = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
+  const lens = normal.map(c => c.length);
+  const pls = cycles.filter(c => !c.current && c.periodLength).map(c => c.periodLength);
+  const sd = lens.length > 1 ? Math.sqrt(avg(lens.map(l => (l - avg(lens)) ** 2))) : 0;
+  return `<div class="stats">
+    <div class="stat"><div class="k">Average cycle</div><div class="v">${avg(lens).toFixed(1)}<small>days</small></div></div>
+    <div class="stat"><div class="k">Variation</div><div class="v">±${sd.toFixed(1)}<small>days · ${Math.min(...lens) || '–'}–${Math.max(...lens) || '–'}</small></div></div>
+    <div class="stat"><div class="k">Average period</div><div class="v">${avg(pls).toFixed(1)}<small>days</small></div></div>
+    <div class="stat"><div class="k">Cycles</div><div class="v">${cycles.length}<small>${cycles.filter(c => c.gap).length ? `· ${cycles.filter(c => c.gap).length} with gaps` : 'logged'}</small></div></div>
+  </div>`;
+}
+
+function lengthChart(cycles) {
+  const el = document.getElementById('lengthChart');
+  if (el) el.outerHTML = lengthChartSVG(cycles, el.clientWidth || 1000, { id: 'lengthChart', hatch: 'hatch-scr' });
+}
+function lengthChartSVG(cycles, W, o) {
+  const list = cycles.slice().sort((a, b) => a.start - b.start);
+  const H = o.height || 190;
+  const m = { l: 34, r: 8, t: 12, b: 28 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const yMax = 50;
+  const y = v => m.t + ih - (Math.min(v, yMax) / yMax) * ih;
+  const slot = iw / Math.max(list.length, 1);
+  const bw = Math.max(3, Math.min(24, slot - 2));
+  let s = '';
+  for (const t of [0, 10, 20, 30, 40, 50]) {
+    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(t)}" y2="${y(t)}" stroke="${t ? 'var(--hair)' : 'var(--baseline)'}"/>`;
+    s += `<text x="${m.l - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${t}</text>`;
+  }
+  let lastYear = null;
+  list.forEach((c, i) => {
+    const x = m.l + i * slot + (slot - bw) / 2;
+    const yr = yearOf(c.start);
+    if (yr !== lastYear) {
+      s += `<text x="${x}" y="${H - 8}" font-size="11" fill="var(--muted)">${yr}</text>`;
+      if (lastYear != null) s += `<line x1="${x - (slot - bw) / 2}" x2="${x - (slot - bw) / 2}" y1="${m.t}" y2="${m.t + ih}" stroke="var(--hair)"/>`;
+      lastYear = yr;
+    }
+    const L = c.current ? Math.max(c.todayCd, 1) : c.length;
+    const top = y(L), pTop = y(c.periodLength), base = y(0);
+    const fill = c.gap ? `url(#${o.hatch})` : c.current ? 'var(--len-current)' : 'var(--len-bar)';
+    const tip = tipAttr(c.current ? `Current cycle · day ${c.todayCd}` : `${c.length} day cycle${c.gap ? ' · likely untracked period' : ''}`,
+      `${fmtY(c.start)}${c.end ? ' – ' + fmtY(c.end) : ''}\nPeriod ${c.periodLength} days${c.ovulation ? `\nEst. ovulation day ${c.ovulation}` : ''}\nClick to jump to it`);
+    s += `<g class="lbar" data-jump="${c.id}" ${tip} style="cursor:pointer">
+      <rect x="${m.l + i * slot}" y="${m.t}" width="${slot}" height="${ih}" fill="transparent"/>
+      <path d="${roundTop(x, top, bw, (pTop - 2) - top, Math.min(4, bw / 2))}" fill="${fill}"/>
+      <rect x="${x}" y="${pTop}" width="${bw}" height="${base - pTop}" fill="var(--flow-medium)"/>
+      ${c.gap && slot >= 14 ? `<text x="${x + bw / 2}" y="${top - 4}" text-anchor="middle" font-size="10" fill="var(--ink-2)">${c.length}</text>` : ''}
+    </g>`;
+  });
+  const normal = list.filter(c => !c.current && !c.gap);
+  if (normal.length) {
+    const a = normal.reduce((s, c) => s + c.length, 0) / normal.length;
+    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(a)}" y2="${y(a)}" stroke="var(--accent)" stroke-width="1" opacity=".7"/>`;
+    s += `<text x="${W - m.r - 2}" y="${y(a) - 5}" text-anchor="end" font-size="11" fill="var(--ink-2)">avg ${a.toFixed(1)}</text>`;
+  }
+  return `<svg ${o.id ? `id="${o.id}"` : ''} class="len-chart" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Cycle lengths over time">
+    <defs><pattern id="${o.hatch}" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="var(--len-hatch-bg)"/><line x1="0" y1="0" x2="0" y2="6" stroke="var(--len-hatch-fg)" stroke-width="2.4"/></pattern></defs>${s}</svg>`;
+}
+const lengthLegend = () => `<div class="legend"><span><i style="background:var(--len-bar)"></i>Cycle</span><span><i style="background:var(--flow-medium)"></i>Period</span>
+    <span><i style="background:repeating-linear-gradient(45deg,var(--len-hatch-bg) 0 2px,var(--len-hatch-fg) 2px 4px)"></i>Likely untracked (&gt;${GAP_CYCLE} days, clipped)</span>
+    <span><i style="background:var(--accent);height:2px;border-radius:0"></i>Average</span></div>`;
+function roundTop(x, y, w, h, r) {
+  if (h <= 0) return '';
+  r = Math.min(r, h);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+
+function renderCycles() {
+  const host = document.getElementById('viewCycles');
+  const cycles = visibleCycles();
+  if (!cycles.length) { host.innerHTML = `<p class="empty">No cycles in this range.</p>`; return; }
+  const colW = colWidth();
+  let html = renderStats(cycles);
+  html += `<div class="panel"><div class="panel-head"><h2>Cycle length</h2>
+    ${lengthLegend()}</div>
+    <svg id="lengthChart" role="img" aria-label="Cycle lengths over time"></svg></div>`;
+
+  let year = null;
+  for (const c of cycles.slice().reverse()) {
+    const yr = yearOf(c.start);
+    if (yr !== year) { html += `<h2 class="year">${yr}</h2>`; year = yr; }
+    const keys = new Set(c.events.map(e => e.key));
+    const rows = state.model.rowOrder.filter(r => keys.has(r.key) && state.cats.has(r.cat));
+    html += cycleCard(c, rows, colW);
+  }
+  host.innerHTML = html;
+  lengthChart(cycles);
+}
+
+/* =====================================================================
+   Patterns view — share of cycles with each symptom on each cycle day
+   ===================================================================== */
+function patternData(cycles, alignEnd) {
+  // stop where fewer than a quarter of cycles reach — otherwise one long cycle reads as "100%"
+  const minDenom = Math.max(3, Math.ceil(cycles.length * 0.25));
+  let SPAN = alignEnd ? 28 : 1;
+  if (!alignEnd) while (SPAN < 45 && cycles.filter(c => c.length >= SPAN + 1).length >= minDenom) SPAN++;
+  const days = alignEnd ? Array.from({ length: SPAN }, (_, i) => i - SPAN) : Array.from({ length: SPAN }, (_, i) => i + 1);
+  const pos = (c, cd) => alignEnd ? cd - c.length - 1 : cd;           // -1 = last day before next period
+
+  // denominator per column: cycles that actually contain that day
+  const denom = days.map(d => cycles.filter(c => alignEnd ? c.length >= -d : c.length >= d).length);
+
+  const counts = new Map();  // key -> Map(col -> Set(cycleId))
+  const totals = new Map();  // key -> Set(cycleId)
+  for (const c of cycles) for (const e of c.events) {
+    const p = pos(c, e.cd);
+    const col = alignEnd ? p + SPAN : p - 1;
+    if (!totals.has(e.key)) totals.set(e.key, new Set());
+    totals.get(e.key).add(c.id);
+    if (col < 0 || col >= SPAN) continue;
+    if (!counts.has(e.key)) counts.set(e.key, new Map());
+    const m = counts.get(e.key);
+    if (!m.has(col)) m.set(col, new Set());
+    m.get(col).add(c.id);
+  }
+
+  return { SPAN, days, denom, counts, totals };
+}
+
+function renderPatterns() {
+  const host = document.getElementById('viewPatterns');
+  const cycles = visibleCycles().filter(c => !c.current && !c.gap);
+  if (cycles.length < 2) { host.innerHTML = `<p class="empty">Need at least two complete cycles in this range.</p>`; return; }
+
+  const alignEnd = state.align === 'end';
+  const { SPAN, days, denom, counts, totals } = patternData(cycles, alignEnd);
+
+  const colW = Math.max(18, Math.min(30, Math.floor((document.querySelector('main').clientWidth - 64 - 300) / Math.max(SPAN, 28))));
+  const cx = i => PAD_X + (i + 0.5) * colW;
+  const W = PAD_X * 2 + SPAN * colW;
+  const maxR = Math.min(10, colW / 2 - 2);
+
+  // reference bar: average period + average fertile window
+  const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+  const avgLen = avg(cycles.map(c => c.length)), avgPeriod = Math.round(avg(cycles.map(c => c.periodLength)));
+  const ov = alignEnd ? -14 : Math.round(avgLen - 13);
+  const fert = [ov - 5, ov + 1];
+  const colOf = d => alignEnd ? d + SPAN : d - 1;
+  let head = `<svg width="${W}" height="${HEAD_H}" style="display:block">`;
+  const x0 = cx(0) - colW / 2, x1 = cx(SPAN - 1) + colW / 2;
+  head += `<rect x="${x0}" y="4" width="${x1 - x0}" height="${BAR_H}" rx="${BAR_H / 2}" fill="var(--bar)"/>`;
+  if (!alignEnd) head += `<rect x="${x0}" y="4" width="${avgPeriod * colW}" height="${BAR_H}" rx="${BAR_H / 2}" fill="var(--flow-medium)" ${tipAttr('Average period', `${avgPeriod} days`)}/>`;
+  else head += `<text x="${x1 - 8}" y="${4 + BAR_H / 2 + 4}" text-anchor="end" font-size="12" fill="var(--ink-2)">next period →</text>`;
+  const fx = cx(colOf(fert[0])) - colW / 2;
+  head += `<rect x="${fx}" y="4" width="${7 * colW}" height="${BAR_H}" rx="${BAR_H / 2}" fill="var(--fertile)" opacity=".8" ${tipAttr('Typical fertile window', alignEnd ? '19 to 13 days before the next period' : `Around day ${fert[0]}–${fert[1]} (average cycle ${avgLen.toFixed(1)} days)`)}/>`;
+  head += `<circle cx="${cx(colOf(ov))}" cy="${4 + BAR_H / 2}" r="${BAR_H / 2 - 4}" fill="var(--ovulation)"/><circle cx="${cx(colOf(ov))}" cy="${4 + BAR_H / 2}" r="2.6" fill="var(--fertile)"/>`;
+  days.forEach((d, i) => {
+    if (alignEnd ? (d % 2) : ((d - 1) % 2)) return;
+    head += `<text x="${cx(i)}" y="58" text-anchor="middle" font-size="13" fill="var(--ink-2)">${alignEnd ? d : d}</text>`;
+  });
+  head += `</svg>`;
+
+  const MIN_CYCLES = 3;
+  const allRows = state.model.rowOrder.filter(r => totals.has(r.key) && state.cats.has(r.cat) && r.key !== 'notes');
+  const rows = state.rare ? allRows : allRows.filter(r => totals.get(r.key).size >= MIN_CYCLES);
+  const hiddenRare = allRows.length - rows.length;
+  const peakOf = new Map(rows.map(r => {
+    const m = counts.get(r.key) || new Map();
+    let pk = 0; for (const [i, set] of m) if (denom[i]) pk = Math.max(pk, set.size / denom[i]);
+    return [r.key, pk];
+  }));
+  const relative = state.scale === 'peak';
+  let html = `<div class="pattern-controls">
+      <div class="seg" id="alignSeg">
+        <button data-align="start" aria-pressed="${!alignEnd}">Days from period start</button>
+        <button data-align="end" aria-pressed="${alignEnd}">Days before next period</button>
+      </div>
+      <div class="seg">
+        <button data-scale="peak" aria-pressed="${relative}" title="Each row scaled to its own busiest day — shows when a symptom happens">Relative to each symptom</button>
+        <button data-scale="abs" aria-pressed="${!relative}" title="Dot size is the raw share of cycles — shows how often">Share of all cycles</button>
+      </div>
+      <button class="chip" data-rare aria-pressed="${state.rare}">${state.rare ? 'Hide' : 'Show'} rare (${state.rare ? allRows.filter(r => totals.get(r.key).size < MIN_CYCLES).length : hiddenRare})</button>
+    </div>
+    <div class="pattern-controls" style="margin-top:12px">
+      <div class="legend"><span>${relative ? 'Dot size = how close that day is to the symptom’s busiest day' : 'Dot size = share of cycles with the symptom on that day'}</span>
+        ${[0.1, 0.25, 0.5, 1].map(p => `<span><svg width="${maxR * 2 + 2}" height="${maxR * 2 + 2}"><circle cx="${maxR + 1}" cy="${maxR + 1}" r="${Math.max(3.2, Math.sqrt(p) * maxR)}" fill="var(--ink-2)"/></svg>${relative ? (p === 1 ? 'peak' : p * 100 + '% of peak') : p * 100 + '%'}</span>`).join('')}
+      </div>
+    </div>
+    <p class="pattern-note">${cycles.length} complete cycles (cycles longer than ${GAP_CYCLE} days are left out)${hiddenRare ? `; ${hiddenRare} symptoms logged in fewer than ${MIN_CYCLES} cycles are hidden` : ''}. Hover a dot for exact counts.
+      ${alignEnd ? 'Aligned on the <b>next</b> period, so the second half of each cycle lines up. Use this for PMS-type symptoms; the luteal phase is more consistent than the first half.'
+                 : 'Aligned on the first day of the period. Later days include fewer cycles, because short cycles end before them.'}</p>`;
+
+  html += `<div class="panel" style="padding-top:22px;max-width:${W + 240 + 40}px"><div class="cycle-body"><div class="grid-scroll" style="width:${W}px">${head}`;
+  let svg = `<svg width="${W}" height="${rows.length * ROW_H}" style="display:block">`;
+  rows.forEach((row, ri) => {
+    const y = ri * ROW_H + ROW_H / 2;
+    const m = counts.get(row.key) || new Map();
+    svg += `<g data-row="${ri}"><rect class="rowbg" x=".5" y="${y - ROW_H / 2 + 2.5}" width="${W + 20}" height="${ROW_H - 5}" rx="10"/>`;
+    for (let i = 0; i < SPAN; i++) {
+      const set = m.get(i), n = set ? set.size : 0, D = denom[i];
+      if (n && D) {
+        const share = n / D;
+        const v = relative ? share / (peakOf.get(row.key) || 1) : share;
+        const r = Math.max(3.2, Math.sqrt(v) * maxR);
+        const dayLabel = alignEnd ? `${-days[i]} day${days[i] === -1 ? '' : 's'} before period` : `Cycle day ${days[i]}`;
+        svg += `<g ${tipAttr(row.label.join(' ').trim(), `${dayLabel}\n${n} of ${D} cycles (${Math.round(share * 100)}%)`)}>
+          <rect x="${cx(i) - colW / 2}" y="${y - ROW_H / 2}" width="${colW}" height="${ROW_H}" fill="transparent"/>
+          <circle cx="${cx(i)}" cy="${y}" r="${r}" fill="${CAT[row.cat].color}" opacity="${0.6 + 0.4 * v}"/></g>`;
+      } else {
+        const week = alignEnd ? false : (days[i] % 7 === 0);
+        svg += `<circle cx="${cx(i)}" cy="${y}" r="${week ? 2.6 : 1.7}" fill="${week ? 'var(--week-dot)' : 'var(--grid-dot)'}"/>`;
+      }
+    }
+    svg += `</g>`;
+  });
+  svg += `</svg>`;
+  const labels = `<div class="labels" style="padding-top:${HEAD_H + 2}px">` + rows.map((r, ri) => {
+    const pct = Math.round(totals.get(r.key).size / cycles.length * 100);
+    const nC = totals.get(r.key).size;
+    return `<div data-row="${ri}" style="height:${ROW_H - 4}px;margin-bottom:4px"><b>${esc(r.label[0])}</b>${r.label[1] ? `<span>${esc(r.label[1])}</span>` : ''}<em class="sub" title="Logged in ${nC} of ${cycles.length} cycles">${pct}%</em></div>`;
+  }).join('') + `</div>`;
+  html += svg + `</div>${labels}</div></div>`;
+  host.innerHTML = html;
+}
+
+/* =====================================================================
+   Report — light, paper-width archive for printing / Save as PDF
+   ===================================================================== */
+const R = { CW: 720, LABEL_W: 150, ROW: 13, BAR: 12 };
+const mean = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
+const quantile = (arr, q) => {
+  const a = arr.slice().sort((x, y) => x - y), i = (a.length - 1) * q, lo = Math.floor(i);
+  return a[lo] + (a[Math.min(lo + 1, a.length - 1)] - a[lo]) * (i - lo);
+};
+const rangeStr = (a, b) => yearOf(a) === yearOf(b) ? `${fmt(a)} – ${fmtY(b)}` : `${fmtY(a)} – ${fmtY(b)}`;
+const clip = (t, n) => t.length > n ? t.slice(0, n - 1) + '…' : t;
+const rowMeta = () => new Map(state.model.rowOrder.map(r => [r.key, r]));
+
+function rowLabelSVG(row, x, y) {
+  const room = 30, a = clip(row.label[0], room), b = row.label[1] && a.length + row.label[1].length < room ? row.label[1] : '';
+  return `<text x="${x}" y="${y}" text-anchor="end" font-size="8.5" fill="var(--ink)"><tspan font-weight="600">${esc(a)}</tspan>${b ? `<tspan fill="var(--ink-2)"> ${esc(b)}</tspan>` : ''}</text>`;
+}
+
+function symptomStats(cycles) {
+  const stats = new Map();
+  for (const c of cycles) {
+    const complete = !c.current && !c.gap;
+    for (const e of c.events) {
+      if (e.key === 'notes' || !state.cats.has(e.cat)) continue;
+      let st = stats.get(e.key);
+      if (!st) stats.set(e.key, st = { key: e.key, cat: e.cat, label: e.label, cycles: new Set(), days: new Set(), first: e.day, last: e.day, cds: [], before: [] });
+      st.cycles.add(c.id); st.days.add(e.day);
+      st.first = Math.min(st.first, e.day); st.last = Math.max(st.last, e.day);
+      if (complete) { st.cds.push(e.cd); st.before.push(c.length - e.cd + 1); }
+    }
+  }
+  return stats;
+}
+
+// middle 50% of logged days, by whichever alignment is tighter
+function timing(st) {
+  if (st.cds.length < 3) return '—';
+  const a = [quantile(st.cds, .25), quantile(st.cds, .75)].map(Math.round);
+  const b = [quantile(st.before, .25), quantile(st.before, .75)].map(Math.round);
+  if (Math.min(a[1] - a[0], b[1] - b[0]) > 14) return 'Spread through the cycle';
+  if (a[1] - a[0] <= b[1] - b[0]) return a[0] === a[1] ? `Day ${a[0]}` : `Days ${a[0]}–${a[1]}`;
+  return b[0] === b[1] ? `${b[0]} day${b[0] === 1 ? '' : 's'} before period` : `${b[0]}–${b[1]} days before period`;
+}
+
+function reportCycle(c, rows) {
+  const L = c.displayLength;
+  const gridW = R.CW - R.LABEL_W - 4;
+  const colW = Math.min(gridW / 44, gridW / L);   // one column width for normal cycles; long gaps squeeze to fit
+  const cx = d => R.LABEL_W + (d - 0.5) * colW;
+  const numY = 4 + R.BAR + 11, top = numY + 5;
+  const H = top + rows.length * R.ROW + 2;
+  const isPeriod = d => d <= c.periodLength && state.model.flow.has(c.start + d - 1);
+  const fertile = d => c.fertile && d >= c.fertile[0] && d <= c.fertile[1];
+
+  let svg = `<svg viewBox="0 0 ${R.CW} ${H}" width="${R.CW}" height="${H}">`;
+  // zebra rows: on paper there's no hover, so stripes carry the eye from label to dots
+  rows.forEach((_, ri) => { if (ri % 2 === 0) svg += `<rect x="0" y="${top + ri * R.ROW}" width="${R.LABEL_W + L * colW + 2}" height="${R.ROW}" fill="var(--raised)"/>`; });
+  svg += phaseBar(c, R.CW, cx, colW, R.BAR);
+  svg += `<text x="${R.LABEL_W - 8}" y="${numY}" text-anchor="end" font-size="8" fill="var(--muted)">Cycle day</text>`;
+  const step = colW >= 10 ? 2 : 7;
+  for (let d = 1; d <= L; d += step) {
+    const col = isPeriod(d) ? 'var(--flow-medium)' : fertile(d) ? 'var(--fertile-ink)' : 'var(--ink-2)';
+    svg += `<text x="${cx(d)}" y="${numY}" text-anchor="middle" font-size="8" fill="${col}">${d}</text>`;
+  }
+
+  const idx = new Map();
+  for (const e of c.events) { if (!idx.has(e.key)) idx.set(e.key, new Map()); if (!idx.get(e.key).has(e.cd)) idx.get(e.key).set(e.cd, e); }
+  const maxR = Math.min(4.6, colW / 2 - 0.6);
+  rows.forEach((row, ri) => {
+    const y = top + ri * R.ROW + R.ROW / 2;
+    svg += rowLabelSVG(row, R.LABEL_W - 8, y + 3);
+    const m = idx.get(row.key) || new Map();
+    for (let d = 1; d <= L; d++) {
+      const e = m.get(d);
+      if (e) svg += `<circle cx="${cx(d)}" cy="${y}" r="${Math.max(1.6, maxR * (SEVERITY_R[e.sev] || 0.8))}" fill="${CAT[row.cat].color}"/>`;
+      else if (colW >= 6) svg += `<circle cx="${cx(d)}" cy="${y}" r="${d % 7 ? .8 : 1.3}" fill="${d % 7 ? 'var(--grid-dot)' : 'var(--week-dot)'}"${c.current && d > c.todayCd ? ' opacity=".35"' : ''}/>`;
+    }
+  });
+  svg += `</svg>`;
+
+  const details = c.events
+    .filter(e => e.detail && state.cats.has(e.cat) && (e.key === 'notes' || e.key.startsWith('sleep_duration') || e.key.startsWith('weight')))
+    .sort((a, b) => a.day - b.day)
+    .map(e => `<li><b>Day ${e.cd}</b> · ${fmt(e.day)} — ${e.key === 'notes' ? '' : esc(e.label[0]) + ': '}${esc(e.detail)}</li>`);
+
+  const head = c.current
+    ? `<b>Current cycle</b> from ${fmtY(c.start)} <span class="m">day ${c.todayCd} · predicted ${c.length} days · period ${c.periodLength} d · ${rows.length} symptoms</span>`
+    : `<b>${c.length} days</b> ${rangeStr(c.start, c.end)} <span class="m">period ${c.periodLength} d${c.ovulation ? ` · est. ovulation day ${c.ovulation}` : ''} · ${rows.length} symptom${rows.length === 1 ? '' : 's'}</span>${c.gap ? ` <span class="flag">Likely untracked period</span>` : ''}`;
+  return `<div class="r-cycle"><div class="r-cycle-head">${head}</div>${svg}${details.length ? `<ul class="r-details">${details.join('')}</ul>` : ''}</div>`;
+}
+
+function reportPattern(cycles, alignEnd, minCycles) {
+  const { SPAN, days, denom, counts, totals } = patternData(cycles, alignEnd);
+  const PCT_W = 34;
+  const colW = Math.min(16, (R.CW - R.LABEL_W - PCT_W - 4) / SPAN);
+  const cx = i => R.LABEL_W + (i + 0.5) * colW;
+  const rows = state.model.rowOrder.filter(r => totals.has(r.key) && state.cats.has(r.cat) && r.key !== 'notes' && totals.get(r.key).size >= minCycles);
+  const top = 20, H = top + rows.length * R.ROW + 2;
+  const maxR = Math.min(5.5, colW / 2 - 0.5);
+  let svg = `<svg viewBox="0 0 ${R.CW} ${H}" width="${R.CW}" height="${H}">`;
+  svg += `<text x="${R.LABEL_W - 8}" y="11" text-anchor="end" font-size="8" fill="var(--muted)">${alignEnd ? 'Days before period' : 'Cycle day'}</text>`;
+  svg += `<text x="${R.CW}" y="11" text-anchor="end" font-size="8" fill="var(--muted)">of cycles</text>`;
+  days.forEach((d, i) => {
+    if (alignEnd ? d % 2 : (d - 1) % 2) return;
+    svg += `<text x="${cx(i)}" y="11" text-anchor="middle" font-size="8" fill="var(--ink-2)">${d}</text>`;
+  });
+  rows.forEach((row, ri) => {
+    const y = top + ri * R.ROW + R.ROW / 2;
+    if (ri % 2 === 0) svg += `<rect x="0" y="${top + ri * R.ROW}" width="${R.CW}" height="${R.ROW}" fill="var(--raised)"/>`;
+    svg += rowLabelSVG(row, R.LABEL_W - 8, y + 3);
+    const m = counts.get(row.key) || new Map();
+    let peak = 0; for (const [i, set] of m) if (denom[i]) peak = Math.max(peak, set.size / denom[i]);
+    for (let i = 0; i < SPAN; i++) {
+      const n = m.get(i)?.size || 0, D = denom[i];
+      if (n && D) {
+        const v = (n / D) / (peak || 1);
+        svg += `<circle cx="${cx(i)}" cy="${y}" r="${Math.max(1.4, Math.sqrt(v) * maxR)}" fill="${CAT[row.cat].color}" opacity="${0.6 + 0.4 * v}"/>`;
+      } else svg += `<circle cx="${cx(i)}" cy="${y}" r=".8" fill="var(--grid-dot)"/>`;
+    }
+    svg += `<text x="${R.CW}" y="${y + 3}" text-anchor="end" font-size="8.5" fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${Math.round(totals.get(row.key).size / cycles.length * 100)}%</text>`;
+  });
+  return svg + `</svg>`;
+}
+
+function renderReport() {
+  const host = document.getElementById('viewReport');
+  const o = state.report;
+  const cycles = visibleCycles();
+  const toolbar = `<div class="report-toolbar">
+      <button class="btn" data-print>Print / Save as PDF</button>
+      ${[['summary', 'Summary'], ['symptoms', 'Symptom table'], ['patterns', 'Patterns'], ['cycles', 'Every cycle'], ['appendix', 'Appendix']]
+        .map(([k, l]) => `<label><input type="checkbox" data-rsec="${k}" ${o[k] ? 'checked' : ''}>${l}</label>`).join('')}
+      <label>Cycles <select data-rorder><option value="asc" ${o.order === 'asc' ? 'selected' : ''}>oldest first</option><option value="desc" ${o.order === 'desc' ? 'selected' : ''}>newest first</option></select></label>
+      <span class="hint">Follows the year and category filters above. In the print dialog choose “Save as PDF”. Sized for Letter; A4 works too.</span>
+    </div>`;
+  if (!cycles.length) { host.innerHTML = toolbar + `<p class="empty">No cycles in this range.</p>`; return; }
+
+  const complete = cycles.filter(c => !c.current && !c.gap);
+  const lens = complete.map(c => c.length);
+  const first = cycles[0].start, last = cycles[cycles.length - 1].end ?? todayDay;
+  const span = rangeStr(first, last);
+  const excluded = CATS.filter(c => !state.cats.has(c.id) && state.model.rowOrder.some(r => r.cat === c.id)).map(c => c.name);
+  const stats = symptomStats(cycles);
+  const meta = rowMeta();
+  const sections = [];
+
+  if (o.summary) {
+    const sd = lens.length > 1 ? Math.sqrt(mean(lens.map(l => (l - mean(lens)) ** 2))) : 0;
+    const dataDays = new Set();
+    for (const c of cycles) for (const e of c.events) dataDays.add(e.day);
+    for (const d of state.model.flow.keys()) if (d >= first && d <= last) dataDays.add(d);
+    const byYear = new Map();
+    for (const c of cycles) { const y = yearOf(c.start); if (!byYear.has(y)) byYear.set(y, []); byYear.get(y).push(c); }
+    const yearRows = [...byYear].map(([y, cs]) => {
+      const cl = cs.filter(c => !c.current && !c.gap).map(c => c.length);
+      const top = [...symptomStats(cs).values()].filter(st => st.cat !== 'bleed').sort((a, b) => b.cycles.size - a.cycles.size).slice(0, 3)
+        .map(st => `${esc(st.label.join(' ').trim())} (${st.cycles.size})`).join(', ');
+      return `<tr><td>${y}</td><td class="num">${cs.length}</td><td class="num">${cl.length ? mean(cl).toFixed(1) : '—'}</td>
+        <td class="num">${cl.length ? `${Math.min(...cl)}–${Math.max(...cl)}` : '—'}</td><td class="num">${mean(cs.filter(c => c.periodLength).map(c => c.periodLength)).toFixed(1)}</td><td>${top || '—'}</td></tr>`;
+    }).join('');
+    sections.push(`<section class="r-section">
+      <h1 class="r-title">Cycle archive</h1>
+      <p class="r-sub">${span} · ${cycles.length} cycles · generated ${fmtY(todayDay)}${excluded.length ? ` · excludes ${excluded.join(', ')}` : ''}</p>
+      <div class="r-stats">
+        <div class="r-stat"><div class="k">Average cycle</div><div class="v">${mean(lens).toFixed(1)}<small>days</small></div></div>
+        <div class="r-stat"><div class="k">Variation</div><div class="v">±${sd.toFixed(1)}<small>days · ${lens.length ? `${Math.min(...lens)}–${Math.max(...lens)}` : '—'}</small></div></div>
+        <div class="r-stat"><div class="k">Average period</div><div class="v">${mean(cycles.filter(c => !c.current && c.periodLength).map(c => c.periodLength)).toFixed(1)}<small>days</small></div></div>
+        <div class="r-stat"><div class="k">Cycles</div><div class="v">${cycles.length}<small>${complete.length} complete${cycles.some(c => c.gap) ? ` · ${cycles.filter(c => c.gap).length} with gaps` : ''}</small></div></div>
+        <div class="r-stat"><div class="k">Days with something logged</div><div class="v">${dataDays.size}</div></div>
+        <div class="r-stat"><div class="k">Different symptoms logged</div><div class="v">${stats.size}</div></div>
+      </div>
+      <h2 class="r-h2">Cycle length</h2>${lengthLegend()}
+      ${lengthChartSVG(cycles, R.CW, { hatch: 'hatch-rep', height: 170 })}
+      <h3 class="r-h3">Year by year</h3>
+      <table class="r-table"><thead><tr><th>Year</th><th class="num">Cycles</th><th class="num">Avg length</th><th class="num">Range</th><th class="num">Avg period</th><th>Most logged (cycles)</th></tr></thead><tbody>${yearRows}</tbody></table>
+    </section>`);
+  }
+
+  if (o.symptoms && stats.size) {
+    let body = '';
+    for (const cat of CATS) {
+      const list = [...stats.values()].filter(st => st.cat === cat.id).sort((a, b) => b.cycles.size - a.cycles.size || b.days.size - a.days.size);
+      if (!list.length) continue;
+      body += `<tr class="group"><td colspan="6"><span class="dot" style="background:${cat.color}"></span>${cat.name}</td></tr>`;
+      body += list.map(st => `<tr><td>${esc(st.label.join(' ').trim())}</td><td class="num">${st.cycles.size} · ${Math.round(st.cycles.size / cycles.length * 100)}%</td>
+        <td class="num">${st.days.size}</td><td>${timing(st)}</td><td>${fmtY(st.first)}</td><td>${fmtY(st.last)}</td></tr>`).join('');
+    }
+    sections.push(`<section class="r-section r-break">
+      <h2 class="r-h2">Every symptom</h2>
+      <p class="r-lede">How often each symptom shows up, and when in the cycle. <b>Typical timing</b> is the middle half of logged days in complete cycles, counted from the period start or back from the next period, whichever is tighter.</p>
+      <table class="r-table"><thead><tr><th>Symptom</th><th class="num">Cycles</th><th class="num">Days</th><th>Typical timing</th><th>First logged</th><th>Last logged</th></tr></thead><tbody>${body}</tbody></table>
+    </section>`);
+  }
+
+  if (o.patterns && complete.length >= 2) {
+    const minC = 3;
+    sections.push(`<section class="r-section r-break">
+      <h2 class="r-h2">Patterns across ${complete.length} complete cycles</h2>
+      <p class="r-lede">Dot size shows how close each day is to that symptom’s busiest day; the right column is the share of cycles with the symptom logged at all. Symptoms in fewer than ${minC} cycles are left out.</p>
+      <h3 class="r-h3">Counted from the period start</h3>${reportPattern(complete, false, minC)}
+      <h3 class="r-h3" style="break-before:page">Counted back from the next period</h3>${reportPattern(complete, true, minC)}
+    </section>`);
+  }
+
+  if (o.cycles) {
+    let html = '', year = null;
+    const list = o.order === 'asc' ? cycles : cycles.slice().reverse();
+    for (const c of list) {
+      const yr = yearOf(c.start);
+      if (yr !== year) { html += `<h2 class="r-year">${yr}</h2>`; year = yr; }
+      const keys = new Set(c.events.map(e => e.key));
+      html += reportCycle(c, state.model.rowOrder.filter(r => keys.has(r.key) && state.cats.has(r.cat)));
+    }
+    sections.push(`<section class="r-section r-break">
+      <h2 class="r-h2">Every cycle</h2>
+      <div class="legend"><span>Bar:</span><span><i style="background:var(--flow-light)"></i>Light</span><span><i style="background:var(--flow-medium)"></i>Medium</span><span><i style="background:var(--flow-heavy)"></i>Heavy flow</span>
+        <span><i style="background:var(--fertile)"></i>Est. fertile window</span>
+        <span>· Dots:</span>${CATS.filter(c => state.cats.has(c.id)).map(c => `<span><i class="round" style="background:${c.color}"></i>${c.name}</span>`).join('')}
+        <span>· Bigger dot = more severe, where recorded</span></div>
+      ${html}
+    </section>`);
+  }
+
+  if (o.appendix) {
+    const evs = cycles.flatMap(c => c.events.map(e => ({ ...e, c })));
+    const med = [];
+    if (state.cats.has('med')) {
+      const open = new Map();   // key -> run still being extended
+      for (const e of evs.filter(e => e.cat === 'med').sort((a, b) => a.day - b.day)) {
+        const run = open.get(e.key);
+        if (run && e.day - run.to <= 1) { run.to = e.day; run.n++; continue; }
+        const r = { label: e.label, from: e.day, to: e.day, cd: e.cd, n: 1 };
+        open.set(e.key, r); med.push(r);
+      }
+    }
+    const tags = [...stats.values()].filter(st => st.cat === 'tags').sort((a, b) => b.days.size - a.days.size);
+    const notes = state.cats.has('notes') ? evs.filter(e => e.key === 'notes').sort((a, b) => a.day - b.day) : [];
+    const table = (head, rows) => `<table class="r-table"><thead><tr>${head.map(h => `<th${h.startsWith('#') ? ' class="num"' : ''}>${h.replace('#', '')}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+    sections.push(`<section class="r-section r-break">
+      <h2 class="r-h2">Appendix</h2>
+      ${med.length ? `<h3 class="r-h3">Medication &amp; appointments</h3>${table(['Dates', '#Days', '#From cycle day', 'Item'], med.map(r => `<tr><td>${r.n > 1 ? rangeStr(r.from, r.to) : fmtY(r.from)}</td><td class="num">${r.n}</td><td class="num">${r.cd}</td><td>${esc(r.label.join(' ').trim())}</td></tr>`).join(''))}` : ''}
+      ${tags.length ? `<h3 class="r-h3">Custom tags</h3>${table(['Tag', '#Days', '#Cycles', 'First', 'Last'], tags.map(st => `<tr><td>${esc(st.label[0])}</td><td class="num">${st.days.size}</td><td class="num">${st.cycles.size}</td><td>${fmtY(st.first)}</td><td>${fmtY(st.last)}</td></tr>`).join(''))}` : ''}
+      ${notes.length ? `<h3 class="r-h3">Notes</h3>${table(['Date', '#Cycle day', 'Note'], notes.map(e => `<tr><td style="white-space:nowrap">${fmtY(e.day)}</td><td class="num">${e.cd}</td><td>${esc(e.detail)}</td></tr>`).join(''))}` : ''}
+      <h3 class="r-h3">How this was calculated</h3>
+      <ul class="r-method">
+        <li>A cycle starts on the first logged period day after a gap of more than 2 days. A period that restarts within ${MIN_CYCLE} days is folded into the current cycle.</li>
+        <li>Cycles longer than ${GAP_CYCLE} days are flagged as likely untracked and left out of averages, timing and patterns.</li>
+        <li>Period length counts logged period days from day 1, allowing single-day gaps.</li>
+        <li>Ovulation is <b>estimated</b> as cycle length − 13 (Clue’s convention), with the fertile window from 5 days before to 1 day after. Nothing here measures ovulation.</li>
+        <li>Source: Clue data export (measurements.json). Data shown: ${span}.</li>
+      </ul>
+    </section>`);
+  }
+
+  host.innerHTML = toolbar + `<div class="report"><div class="sheet">${sections.join('') || '<p>Select at least one section.</p>'}</div></div>`;
+
+  let ps = document.getElementById('pageStyle');
+  if (!ps) { ps = document.createElement('style'); ps.id = 'pageStyle'; document.head.appendChild(ps); }
+  const footer = `Cycle archive · ${span}`.replace(/["\\]/g, '');
+  ps.textContent = `@page { @bottom-left { content: "${footer}"; font: 8pt ${getComputedStyle(document.body).fontFamily}; color: #8a8882; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt ${getComputedStyle(document.body).fontFamily}; color: #8a8882; } }`;
+}
+
+/* =====================================================================
+   Chrome: tabs, filters, tooltip, loading
+   ===================================================================== */
+function render() {
+  const views = { cycles: ['viewCycles', renderCycles], patterns: ['viewPatterns', renderPatterns], report: ['viewReport', renderReport] };
+  for (const [v, [id]] of Object.entries(views)) {
+    const el = document.getElementById(id);
+    el.hidden = v !== state.view;
+    if (v !== state.view) el.innerHTML = '';
+  }
+  views[state.view][1]();
+}
+
+function setupChrome() {
+  const sel = document.getElementById('yearSel');
+  sel.innerHTML = `<option value="all">All years</option>` + state.model.years.map(y => `<option value="${y}">${y}</option>`).join('');
+  sel.value = state.year;
+  sel.onchange = () => { state.year = sel.value; render(); };
+
+  const chips = document.getElementById('chips');
+  chips.querySelectorAll('.chip').forEach(n => n.remove());
+  const present = new Set(state.model.rowOrder.map(r => r.cat));
+  for (const c of CATS) {
+    if (!present.has(c.id)) continue;
+    const b = document.createElement('button');
+    b.className = 'chip'; b.setAttribute('aria-pressed', state.cats.has(c.id));
+    b.innerHTML = `<i style="background:${c.color}"></i>${c.name}`;
+    b.onclick = () => {
+      state.cats.has(c.id) ? state.cats.delete(c.id) : state.cats.add(c.id);
+      b.setAttribute('aria-pressed', state.cats.has(c.id));
+      render();
+    };
+    chips.appendChild(b);
+  }
+}
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  state.view = b.dataset.view;
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  render();
+  window.scrollTo({ top: 0 });
+});
+
+document.addEventListener('click', e => {
+  const a = e.target.closest('[data-align]');
+  if (a) { state.align = a.dataset.align; renderPatterns(); return; }
+  const sc = e.target.closest('[data-scale]');
+  if (sc) { state.scale = sc.dataset.scale; renderPatterns(); return; }
+  if (e.target.closest('[data-rare]')) { state.rare = !state.rare; renderPatterns(); return; }
+  if (e.target.closest('[data-print]')) { window.print(); return; }
+  const j = e.target.closest('[data-jump]');
+  if (j) {
+    const card = document.getElementById(j.dataset.jump);
+    if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); card.classList.add('flash'); setTimeout(() => card.classList.remove('flash'), 1200); }
+  }
+});
+
+// row highlight: the row's band in the grid and its label light up together
+let hlBody = null, hlIdx = null;
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest && e.target.closest('[data-row]');
+  const body = el ? el.closest('.cycle-body') : null;
+  const idx = body ? el.dataset.row : null;
+  if (body === hlBody && idx === hlIdx) return;
+  if (hlBody) hlBody.querySelectorAll('.hl').forEach(n => n.classList.remove('hl'));
+  hlBody = body; hlIdx = idx;
+  if (body) body.querySelectorAll(`[data-row="${idx}"]`).forEach(n => n.classList.add('hl'));
+});
+
+// tooltip
+const tip = document.getElementById('tip');
+document.addEventListener('mousemove', e => {
+  const t = e.target.closest && e.target.closest('[data-tip]');
+  if (!t) { tip.style.opacity = 0; return; }
+  tip.innerHTML = `<b>${esc(t.dataset.tip)}</b>${t.dataset.tipb ? `<div class="t-dim">${esc(t.dataset.tipb)}</div>` : ''}`;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 16;
+  if (x + w > innerWidth - 8) x = e.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = e.clientY - h - 12;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px'; tip.style.opacity = 1;
+});
+
+document.addEventListener('change', e => {
+  const sec = e.target.closest('[data-rsec]');
+  if (sec) { state.report[sec.dataset.rsec] = sec.checked; renderReport(); return; }
+  if (e.target.matches('[data-rorder]')) { state.report.order = e.target.value; renderReport(); }
+});
+
+let rt;
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => state.model && render(), 150); });
+
+function start(measurements, profile) {
+  state.model = buildModel(measurements, profile);
+  if (!state.model.cycles.length) throw new Error('No period days found in this export.');
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  setupChrome();
+  render();
+}
+
+function accept(files) {
+  const err = document.getElementById('loadErr');
+  err.textContent = '';
+  const byName = n => files.find(f => f.name === n);
+  const mf = byName('measurements.json') || (files.length === 1 ? files[0] : null);
+  if (!mf) { err.textContent = 'Couldn’t find measurements.json in what you dropped.'; return; }
+  const pf = byName('profile.json');
+  Promise.all([mf.text(), pf ? pf.text() : Promise.resolve(null)]).then(([mt, pt]) => {
+    const measurements = JSON.parse(mt);
+    if (!Array.isArray(measurements)) throw new Error('measurements.json should be a list of entries.');
+    const profile = pt ? (JSON.parse(pt).profileData || null) : null;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ measurements, profile })); } catch (_) {}
+    start(measurements, profile);
+  }).catch(e => { err.textContent = 'Couldn’t read that export: ' + e.message; });
+}
+
+async function readEntry(entry, out) {
+  if (entry.isFile) {
+    if (/^(measurements|profile)\.json$/.test(entry.name)) out.push(await new Promise((res, rej) => entry.file(res, rej)));
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    let batch;
+    do {
+      batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+      for (const e of batch) await readEntry(e, out);
+    } while (batch.length);
+  }
+}
+
+const drop = document.getElementById('drop');
+['dragenter', 'dragover'].forEach(t => addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => addEventListener(t, e => { e.preventDefault(); if (t === 'drop' || e.target === document.documentElement) drop.classList.remove('over'); }));
+addEventListener('drop', async e => {
+  const items = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  const files = [];
+  if (items.length) for (const it of items) await readEntry(it, files);
+  else files.push(...e.dataTransfer.files);
+  accept(files);
+});
+document.getElementById('pickFolder').onclick = () => document.getElementById('folderInput').click();
+document.getElementById('pickFile').onclick = () => document.getElementById('fileInput').click();
+document.getElementById('folderInput').onchange = e => accept([...e.target.files]);
+document.getElementById('fileInput').onchange = e => accept([...e.target.files]);
+document.getElementById('unload').onclick = () => {
+  try { localStorage.removeItem(STORE_KEY); } catch (_) {}
+  location.reload();
+};
+
+// restore last export
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+  if (saved && Array.isArray(saved.measurements)) start(saved.measurements, saved.profile);
+} catch (_) {}
+</script>
+</body>
+</html>

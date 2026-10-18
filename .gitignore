@@ -1,0 +1,14 @@
+# Personal data — never commit. Exports contain health data, name, email and IP addresses.
+ClueDataDownload-*/
+*.zip
+measurements.json
+profile.json
+
+# Screenshots of real data
+*.PNG
+*.png
+*.jpg
+*.jpeg
+*.pdf
+
+.DS_Store
