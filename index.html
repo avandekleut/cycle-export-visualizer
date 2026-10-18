@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- No network access at all: exports are read locally and can't be sent anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>Cycle Analysis</title>
 <style>
 :root {
@@ -244,10 +246,11 @@ main { max-width: 1320px; margin: 0 auto; padding: 8px 32px 120px; }
     <p>Drop your <b>ClueDataDownload</b> folder (or its <code>measurements.json</code>) here.<br>Everything stays in this browser — nothing is uploaded.</p>
     <button class="btn" id="pickFolder">Choose folder</button>
     <button class="btn ghost" id="pickFile">Choose file</button>
+    <p style="margin:18px 0 0"><button class="btn ghost" id="trySample">Try with sample data</button></p>
     <input type="file" id="folderInput" webkitdirectory hidden>
     <input type="file" id="fileInput" accept=".json,application/json" multiple hidden>
     <div class="err" id="loadErr"></div>
-    <p class="small">The last export you load is remembered locally so a reload doesn’t ask again.</p>
+    <p class="small">This page can’t make network requests, so your data has nowhere to go. The last export you load is remembered in this browser only; “Load another” forgets it.</p>
   </div>
 </section>
 
@@ -255,6 +258,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 8px 32px 120px; }
   <header class="top">
     <div class="top-inner">
       <h1>Analysis</h1>
+      <span class="pill" id="sampleTag" hidden>Sample data</span>
       <div class="tabs" role="tablist">
         <button role="tab" data-view="cycles" aria-selected="true">Cycles</button>
         <button role="tab" data-view="patterns" aria-selected="false">Patterns</button>
@@ -794,7 +798,7 @@ function renderPatterns() {
         ${[0.1, 0.25, 0.5, 1].map(p => `<span><svg width="${maxR * 2 + 2}" height="${maxR * 2 + 2}"><circle cx="${maxR + 1}" cy="${maxR + 1}" r="${Math.max(3.2, Math.sqrt(p) * maxR)}" fill="var(--ink-2)"/></svg>${relative ? (p === 1 ? 'peak' : p * 100 + '% of peak') : p * 100 + '%'}</span>`).join('')}
       </div>
     </div>
-    <p class="pattern-note">${cycles.length} complete cycles (cycles longer than ${GAP_CYCLE} days are left out)${hiddenRare ? `; ${hiddenRare} symptoms logged in fewer than ${MIN_CYCLES} cycles are hidden` : ''}. Hover a dot for exact counts.
+    <p class="pattern-note">${cycles.length} complete cycles (cycles longer than ${GAP_CYCLE} days are left out)${hiddenRare ? `; ${hiddenRare} symptom${hiddenRare === 1 ? '' : 's'} logged in fewer than ${MIN_CYCLES} cycles ${hiddenRare === 1 ? 'is' : 'are'} hidden` : ''}. Hover a dot for exact counts.
       ${alignEnd ? 'Aligned on the <b>next</b> period, so the second half of each cycle lines up. Use this for PMS-type symptoms; the luteal phase is more consistent than the first half.'
                  : 'Aligned on the first day of the period. Later days include fewer cycles, because short cycles end before them.'}</p>`;
 
@@ -1185,7 +1189,46 @@ document.addEventListener('change', e => {
 let rt;
 addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => state.model && render(), 150); });
 
-function start(measurements, profile) {
+/* Made-up export for trying the app — deterministic, ~21 months, plausible patterns. Never stored. */
+function sampleExport() {
+  let seed = 20261018;
+  const rnd = () => { seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const iso = n => fromDay(n).toISOString().slice(0, 10);
+  const out = [];
+  const add = (day, type, value) => { if (day <= todayDay) out.push({ type, id: `sample-${out.length}`, date: iso(day), value }); };
+  const opt = option => [{ option }];
+  const sev = () => ({ severity: rnd() < .25 ? 'severe' : rnd() < .55 ? 'moderate' : 'mild' });
+  const notes = ['Started iron supplement', 'Travel — slept badly', 'Very stressful week at work', 'New running shoes, long run', 'Skipped coffee all week'];
+  for (let start = todayDay - 640, n = 0; start <= todayDay; n++) {
+    const len = Math.round(29 + (rnd() + rnd() + rnd() - 1.5) * 3);
+    const day = cd => start + cd - 1, before = k => start + len - k;
+    const plen = rnd() < .4 ? 5 : 4;
+    ['medium', 'heavy', 'medium', 'light', 'light'].slice(0, plen).forEach((f, i) => add(day(i + 1), 'period', { option: f }));
+    if (rnd() < .3) add(before(1), 'spotting', opt('brown'));
+    for (const cd of [1, 2]) if (rnd() < (cd === 1 ? .85 : .6)) add(day(cd), 'pain', [{ option: 'period_cramps', extent: sev() }, ...(rnd() < .35 ? [{ option: 'lower_back' }] : [])]);
+    if (rnd() < .5) add(day(1), 'medication', opt('painkillers'));
+    if (rnd() < .3) add(day(rnd() < .5 ? 1 : 2), 'energy', opt('exhausted'));
+    if (rnd() < .5) add(before(15 + Math.floor(rnd() * 3)), 'discharge', opt('egg_white'));
+    if (rnd() < .25) add(before(14), 'pain', opt('ovulation'));
+    if (rnd() < .2) add(day(8 + Math.floor(rnd() * 5)), 'energy', opt('energetic'));
+    for (let k = 1; k <= 8; k++) {
+      if (rnd() < .3 && k >= 2) add(before(k), 'pain', [{ option: 'breast_tenderness' }]);
+      if (rnd() < (k <= 4 ? .25 : .05)) add(before(k), 'feelings', [{ option: rnd() < .5 ? 'sad' : 'irritable' }, ...(rnd() < .4 ? [{ option: 'sensitive' }] : [])]);
+      if (rnd() < (k <= 6 ? .14 : .03)) add(before(k), 'craving', opt('sweet'));
+      if (rnd() < (k <= 4 ? .18 : .04)) add(before(k), 'digestion', opt('bloated'));
+      if (rnd() < (k <= 5 ? .12 : .03)) add(before(k), 'skin', opt('acne'));
+    }
+    if (rnd() < .3) add(day(1 + Math.floor(rnd() * len)), 'pain', opt('headache'));
+    if (rnd() < .5) add(day(1 + Math.floor(rnd() * len)), 'tags', opt('Long run'));
+    if (rnd() < .2) add(day(1 + Math.floor(rnd() * len)), 'sleep_duration', { minutes: 360 + Math.floor(rnd() * 150) });
+    if (n % 4 === 2) add(day(3 + Math.floor(rnd() * 20)), 'notes', { text: notes[n / 4 % notes.length | 0] });
+    start += len;
+  }
+  return out;
+}
+
+function start(measurements, profile, sample = false) {
+  document.getElementById('sampleTag').hidden = !sample;
   state.model = buildModel(measurements, profile);
   if (!state.model.cycles.length) throw new Error('No period days found in this export.');
   document.getElementById('loader').style.display = 'none';
@@ -1237,6 +1280,7 @@ document.getElementById('pickFolder').onclick = () => document.getElementById('f
 document.getElementById('pickFile').onclick = () => document.getElementById('fileInput').click();
 document.getElementById('folderInput').onchange = e => accept([...e.target.files]);
 document.getElementById('fileInput').onchange = e => accept([...e.target.files]);
+document.getElementById('trySample').onclick = () => start(sampleExport(), { cycle_length: 29 }, true);
 document.getElementById('unload').onclick = () => {
   try { localStorage.removeItem(STORE_KEY); } catch (_) {}
   location.reload();

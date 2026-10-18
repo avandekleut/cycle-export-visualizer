@@ -12,3 +12,6 @@ profile.json
 *.pdf
 
 .DS_Store
+
+# README screenshots are generated from the built-in sample data only
+!docs/*.png
