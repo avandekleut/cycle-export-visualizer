@@ -67,6 +67,8 @@ button { font: inherit; color: inherit; }
 .btn:hover { background: #0e5c6f; }
 .btn.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--hair); }
 .btn.ghost:hover { background: var(--raised); }
+.drop a { color: var(--accent); text-decoration: none; white-space: nowrap; }
+.drop a:hover { text-decoration: underline; }
 .err { color: #ff8a8d; margin-top: 16px; font-size: 14px; }
 
 /* ---------- app shell ---------- */
@@ -251,6 +253,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 8px 32px 120px; }
     <input type="file" id="fileInput" accept=".json,application/json" multiple hidden>
     <div class="err" id="loadErr"></div>
     <p class="small">This page can’t make network requests, so your data has nowhere to go. The last export you load is remembered in this browser only; “Load another” forgets it.</p>
+    <p class="small" style="margin-top:10px"><a href="index.html" download="cycle-export-visualizer.html">Download this page</a> to run it offline (it’s one self-contained file) · <a href="https://github.com/avandekleut/cycle-export-visualizer" target="_blank" rel="noopener">Source on GitHub</a></p>
   </div>
 </section>
 

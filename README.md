@@ -2,7 +2,7 @@
 
 A local, private viewer for the data export from the [Clue](https://helloclue.com) period tracking app. It shows every logged cycle in a dot-grid layout similar to Clue's Analysis screen, finds patterns across cycles, and prints a full archive to PDF.
 
-**[Open it →](https://avandekleut.github.io/cycle-export-visualizer/)**  ·  or download `index.html` and open it locally.
+**[Open it →](https://avandekleut.github.io/cycle-export-visualizer/)**  ·  or use **Download this page** on the start screen (or grab `index.html` here) and open it locally. It's one self-contained file and works offline.
 
 > Not affiliated with or endorsed by Clue / BioWink GmbH.
 
